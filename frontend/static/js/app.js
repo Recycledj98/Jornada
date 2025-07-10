@@ -1,6 +1,6 @@
 // Constantes para los elementos del DOM
 const loginContainer = document.getElementById('loginContainer');
-const appContainer = document.getElementById('appContainer');
+const appContainer = document.getElementById('appContainer'); // Corregido: Eliminado 'document = ' repetido
 const dniInput = document.getElementById('dni');
 const passwordInput = document.getElementById('password');
 const loginButton = document.getElementById('loginButton');
@@ -66,6 +66,21 @@ let currentWorkdayData = null; // Objeto para el día actual en la base de datos
 let loggedInUserDni = null;
 let loggedInUserRole = null;
 
+// --- Variables para Notificaciones y Alertas ---
+let breakReminderTimeout = null;
+let workdayEndReminderTimeout = null;
+const DEFAULT_BREAK_REMINDER_MINUTES = 25; // Notificar 5 minutos antes de una pausa de 30 minutos
+const WORKDAY_HOURS_TARGET = 8; // Objetivo de horas de trabajo en una jornada
+const WORKDAY_END_REMINDER_MINUTES = 15; // Notificar 15 minutos antes de cumplir las 8 horas de trabajo efectivo
+
+// --- Variables para Sonidos ---
+let audioContext;
+let startSoundNode;
+let breakStartSoundNode;
+let breakEndSoundNode;
+let endSoundNode;
+let resetSoundNode;
+
 // --- Funciones de Utilidad ---
 
 /**
@@ -107,6 +122,122 @@ function getTodayDateString() {
     return new Date().toISOString().slice(0, 10);
 }
 
+// --- Funciones de Notificaciones del Navegador ---
+
+/**
+ * Solicita permiso al usuario para enviar notificaciones.
+ */
+function requestNotificationPermission() {
+    if (!("Notification" in window)) {
+        console.warn("Este navegador no soporta notificaciones de escritorio.");
+        return;
+    }
+
+    if (Notification.permission === "default") {
+        Notification.requestPermission().then(permission => {
+            if (permission === "granted") {
+                console.log("Permiso de notificación concedido.");
+            } else {
+                console.warn("Permiso de notificación denegado.");
+            }
+        });
+    }
+}
+
+/**
+ * Envía una notificación al navegador.
+ * @param {string} title - Título de la notificación.
+ * @param {string} body - Cuerpo de la notificación.
+ */
+function sendNotification(title, body) {
+    if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(title, { body: body, icon: '/static/img/icon.png' }); // Podrías añadir un icono
+    }
+}
+
+/**
+ * Cancela todos los temporizadores de recordatorio activos.
+ */
+function clearAllReminders() {
+    if (breakReminderTimeout) {
+        clearTimeout(breakReminderTimeout);
+        breakReminderTimeout = null;
+    }
+    if (workdayEndReminderTimeout) {
+        clearTimeout(workdayEndReminderTimeout);
+        workdayEndReminderTimeout = null;
+    }
+}
+
+// --- Funciones de Sonido ---
+
+/**
+ * Inicializa el AudioContext y crea los nodos de sonido.
+ */
+function initAudio() {
+    if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    // Crear nodos de sonido para cada evento
+    // Frecuencias y duraciones ajustadas para un sonido más "agradable" y minimalista (estilo iOS)
+    startSoundNode = createTone(880, 0.05, 0.3); // Tono alto, muy corto y sutil para inicio positivo
+    breakStartSoundNode = createTone(660, 0.05, 0.3); // Tono medio-alto, muy corto y sutil para inicio de pausa
+    breakEndSoundNode = createTone(990, 0.05, 0.3); // Tono más agudo, muy corto y sutil para fin de pausa
+    endSoundNode = createTone(1000, 0.1, 0.4); // Tono alto, ligeramente más largo y pronunciado para fin de jornada
+    resetSoundNode = createTone(220, 0.05, 0.2); // Tono bajo, muy corto y muy sutil para reinicio
+}
+
+/**
+ * Crea un tono simple usando OscillatorNode.
+ * @param {number} frequency - Frecuencia del tono en Hz.
+ * @param {number} duration - Duración del tono en segundos.
+ * @param {number} volume - Volumen del tono (0.0 a 1.0).
+ * @returns {function} Una función que reproduce el tono.
+ */
+function createTone(frequency, duration, volume) {
+    return function() {
+        if (!audioContext) {
+            initAudio(); // Inicializar si no se ha hecho
+        }
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.type = 'sine'; // Onda sinusoidal para un sonido más puro y suave
+        oscillator.frequency.value = frequency;
+
+        // Añadir un pequeño fade out para evitar chasquidos y hacer el sonido más suave
+        gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + duration);
+
+
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + duration);
+    };
+}
+
+/**
+ * Reproduce un sonido específico.
+ * @param {function} soundFunction - La función que reproduce el sonido.
+ */
+function playSound(soundFunction) {
+    if (soundFunction) {
+        // Los navegadores modernos requieren que el AudioContext se active por una interacción del usuario.
+        // Si el contexto está suspendido, lo reanudamos.
+        if (audioContext.state === 'suspended') {
+            audioContext.resume().then(() => {
+                soundFunction();
+            });
+        } else {
+            soundFunction();
+        }
+    }
+}
+
+
 // --- Funciones de Comunicación con el Backend (API) ---
 
 /**
@@ -144,7 +275,6 @@ async function apiGet(url) {
 /**
  * Realiza una petición POST a la API con el encabezado X-User-DNI.
  * @param {string} url - URL del endpoint.
- * @param {Object} data - Datos a enviar en el cuerpo de la petición.
  * @returns {Promise<Object>} Respuesta JSON de la API.
  */
 async function apiPost(url, data) {
@@ -408,9 +538,12 @@ function logout() {
     `;
     initialLoadTime.textContent = new Date().toLocaleTimeString();
 
-    // Detener el reloj si está corriendo
+    // Detener y reiniciar el reloj
     clearInterval(timerInterval);
-    timerInterval = setInterval(updateCurrentTime, 1000); // Reiniciar el reloj
+    timerInterval = setInterval(updateCurrentTime, 1000);
+
+    // Limpiar todos los recordatorios pendientes
+    clearAllReminders();
 
     updateUI(); // Actualizar la UI a su estado inicial
     loginError.classList.add('hidden'); // Ocultar cualquier error de login anterior
@@ -427,6 +560,27 @@ startButton.addEventListener('click', async () => {
         await addLogEntry('Jornada Iniciada', workStartTime);
         status = 'working';
         updateUI();
+        playSound(startSoundNode); // Reproducir sonido de inicio
+
+        // Programar recordatorio de fin de jornada
+        // Calcular el tiempo efectivo de trabajo restante hasta el objetivo de horas
+        const effectiveWorkTargetMs = WORKDAY_HOURS_TARGET * 3600 * 1000;
+        const currentEffectiveWorkMs = (Date.now() - workStartTime - totalBreakDuration);
+        const remainingWorkMs = effectiveWorkTargetMs - currentEffectiveWorkMs;
+
+        // Notificar X minutos antes de que se cumpla el objetivo
+        const notificationTimeMs = remainingWorkMs - (WORKDAY_END_REMINDER_MINUTES * 60 * 1000);
+
+        if (notificationTimeMs > 0) {
+            workdayEndReminderTimeout = setTimeout(() => {
+                if (status === 'working') { // Solo notificar si sigue trabajando
+                    sendNotification("¡Recordatorio de Jornada!", `Estás a ${WORKDAY_END_REMINDER_MINUTES} minutos de cumplir tus ${WORKDAY_HOURS_TARGET} horas de trabajo efectivo.`);
+                }
+            }, notificationTimeMs);
+            console.log(`Recordatorio de fin de jornada programado para ${WORKDAY_END_REMINDER_MINUTES} minutos antes de las ${WORKDAY_HOURS_TARGET} horas.`);
+        } else {
+            console.log("El recordatorio de fin de jornada no se programó (ya se superó el tiempo o está muy cerca).");
+        }
     }
 });
 
@@ -436,6 +590,15 @@ startBreakButton.addEventListener('click', async () => {
         await addLogEntry('Pausa Iniciada', breakStartTime);
         status = 'on_break';
         updateUI();
+        playSound(breakStartSoundNode); // Reproducir sonido de inicio de pausa
+
+        // Programar recordatorio de fin de pausa
+        breakReminderTimeout = setTimeout(() => {
+            if (status === 'on_break') { // Solo notificar si sigue en pausa
+                sendNotification("¡Recordatorio de Pausa!", `Llevas ${DEFAULT_BREAK_REMINDER_MINUTES} minutos de pausa. Considera finalizarla.`);
+            }
+        }, DEFAULT_BREAK_REMINDER_MINUTES * 60 * 1000);
+        console.log(`Recordatorio de pausa programado para ${DEFAULT_BREAK_REMINDER_MINUTES} minutos.`);
     }
 });
 
@@ -447,6 +610,12 @@ endBreakButton.addEventListener('click', async () => {
         breakStartTime = null; // Resetear el inicio de la pausa
         status = 'working';
         updateUI();
+        playSound(breakEndSoundNode); // Reproducir sonido de fin de pausa
+
+        // Cancelar recordatorio de pausa
+        clearTimeout(breakReminderTimeout);
+        breakReminderTimeout = null;
+        console.log("Recordatorio de pausa cancelado.");
     }
 });
 
@@ -457,6 +626,11 @@ endButton.addEventListener('click', async () => {
         status = 'finished';
         clearInterval(timerInterval); // Detener el reloj
         updateUI();
+        playSound(endSoundNode); // Reproducir sonido de fin de jornada
+
+        // Cancelar todos los recordatorios pendientes
+        clearAllReminders();
+        console.log("Todos los recordatorios cancelados al finalizar la jornada.");
     }
 });
 
@@ -514,8 +688,13 @@ resetButton.addEventListener('click', () => {
             clearInterval(timerInterval);
             timerInterval = setInterval(updateCurrentTime, 1000);
 
+            // Limpiar todos los recordatorios pendientes
+            clearAllReminders();
+            console.log("Todos los recordatorios cancelados al reiniciar la jornada.");
+
             updateUI(); // Actualizar la UI a su estado inicial
             document.body.removeChild(confirmResetModal); // Cerrar el modal
+            playSound(resetSoundNode); // Reproducir sonido de reinicio
             addLogEntry('Jornada Reiniciada', Date.now()); // Añadir al log (y se guardará en el nuevo currentWorkdayData)
         } else {
             showMessage("No se pudo reiniciar la jornada. Inténtalo de nuevo.");
@@ -539,7 +718,7 @@ tabButtons.forEach(button => {
         // Activar la pestaña clicada y mostrar su contenido
         button.classList.add('active');
         const targetTabId = button.dataset.tab + 'Tab';
-        document.getElementById(targetTabId).classList.remove('hidden'); // Corregido: targetTabId en lugar de targetTabTabId
+        document.getElementById(targetTabId).classList.remove('hidden');
 
         // Si se cambia a la pestaña de registros, actualizar la vista diaria por defecto
         if (button.dataset.tab === 'records') {
@@ -958,6 +1137,12 @@ viewAllWorkdaysButton.addEventListener('click', async () => {
 document.addEventListener('DOMContentLoaded', () => {
     initialLoadTime.textContent = new Date().toLocaleTimeString();
     timerInterval = setInterval(updateCurrentTime, 1000); // Iniciar el reloj
+
+    // Solicitar permiso de notificaciones al cargar la página
+    requestNotificationPermission();
+
+    // Inicializar el AudioContext y los nodos de sonido
+    initAudio();
 
     // Establecer la fecha actual en el input de fecha de registros
     recordDateInput.value = getTodayDateString();
