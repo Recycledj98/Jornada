@@ -3,12 +3,39 @@ from flask_cors import CORS
 import database
 import os
 import json
+from functools import wraps
 
 app = Flask(__name__, static_folder='../frontend', static_url_path='/')
 CORS(app)
 
 # Inicializa la base de datos al iniciar la aplicación Flask
 database.init_db()
+
+# Decorador para verificar si el usuario es administrador
+# En una aplicación real, esto también debería verificar un token de sesión
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user_dni = request.headers.get('X-User-DNI')
+        if not user_dni:
+            return jsonify({'error': 'DNI de usuario no proporcionado'}), 401
+
+        # Esto es una simplificación. En producción, se debería consultar
+        # la base de datos para verificar el rol del usuario por su DNI.
+        # Por ahora, asumimos que si el DNI es 'admin', tiene acceso.
+        # La función get_user_role_from_db debería ser implementada.
+        # user_role = database.get_user_role_by_dni(user_dni)
+        # if user_role != 'admin':
+        #    return jsonify({'error': 'Acceso denegado: Se requiere rol de administrador'}), 403
+
+        # Para esta implementación, simplemente verificamos si el DNI es 'admin'
+        # Esto es INSEGURO para producción y solo para fines de desarrollo/prueba.
+        if user_dni != 'admin': # Asumiendo 'admin' es el DNI del admin
+            return jsonify({'error': 'Acceso denegado: Se requiere rol de administrador'}), 403
+
+        return f(*args, **kwargs)
+    return decorated_function
+
 
 @app.route('/')
 def index():
@@ -107,14 +134,18 @@ def delete_workday_route():
 # --- Rutas de Administración ---
 
 @app.route('/admin/users', methods=['GET'])
+# @admin_required # Descomentar para habilitar la seguridad de roles
 def admin_get_users():
     """Endpoint para que el administrador vea todos los usuarios."""
-    # En una aplicación real, aquí se verificaría el rol de administrador
-    # Por simplicidad, asumimos que solo los admins acceden a estas rutas.
-    all_users = database.get_all_users()
-    return jsonify({'success': True, 'users': all_users}), 200
+    try:
+        all_users = database.get_all_users()
+        return jsonify({'success': True, 'users': all_users}), 200
+    except Exception as e:
+        app.logger.error(f"Error al obtener todos los usuarios: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'Error interno del servidor al obtener usuarios: {str(e)}'}), 500
 
 @app.route('/admin/register_user', methods=['POST'])
+# @admin_required # Descomentar para habilitar la seguridad de roles
 def admin_register_user():
     """Endpoint para que el administrador registre nuevos usuarios."""
     try:
@@ -136,8 +167,45 @@ def admin_register_user():
         app.logger.error(f"Error al registrar nuevo usuario: {e}", exc_info=True)
         return jsonify({'success': False, 'message': f'Error interno del servidor al registrar usuario: {str(e)}'}), 500
 
+@app.route('/admin/user/<dni>', methods=['PUT'])
+# @admin_required # Descomentar para habilitar la seguridad de roles
+def admin_update_user(dni):
+    """Endpoint para que el administrador actualice un usuario."""
+    try:
+        data = request.get_json()
+        new_password = data.get('password')
+        new_role = data.get('role')
+
+        if not new_password and not new_role:
+            app.logger.error(f"Error 400: No se proporcionaron datos para actualizar el usuario {dni}.")
+            return jsonify({'error': 'No se proporcionaron datos para actualizar (contraseña o rol)'}), 400
+
+        if database.update_user(dni, new_password, new_role):
+            return jsonify({'success': True, 'message': f'Usuario {dni} actualizado exitosamente'}), 200
+        else:
+            app.logger.warning(f"Error 404: Usuario {dni} no encontrado para actualizar.")
+            return jsonify({'success': False, 'message': 'Usuario no encontrado o no se pudo actualizar'}), 404
+    except Exception as e:
+        app.logger.error(f"Error al actualizar usuario {dni}: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'Error interno del servidor al actualizar usuario: {str(e)}'}), 500
+
+@app.route('/admin/user/<dni>', methods=['DELETE'])
+@admin_required # Descomentar para habilitar la seguridad de roles
+def admin_delete_user(dni):
+    """Endpoint para que el administrador elimine un usuario."""
+    try:
+        if database.delete_user(dni):
+            return jsonify({'success': True, 'message': f'Usuario {dni} eliminado exitosamente'}), 200
+        else:
+            app.logger.warning(f"Error 404: Usuario {dni} no encontrado para eliminar.")
+            return jsonify({'success': False, 'message': 'Usuario no encontrado o no se pudo eliminar'}), 404
+    except Exception as e:
+        app.logger.error(f"Error al eliminar usuario {dni}: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'Error interno del servidor al eliminar usuario: {str(e)}'}), 500
+
 
 @app.route('/admin/all_workdays', methods=['GET'])
+@admin_required # Descomentar para habilitar la seguridad de roles
 def admin_get_all_workdays():
     """Endpoint para que el administrador vea las jornadas de todos los usuarios."""
     all_workdays = database.get_all_workdays_all_users()

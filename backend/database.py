@@ -1,196 +1,214 @@
 import sqlite3
-import datetime
-import json # Necesario para serializar/deserializar los eventos del log
+import hashlib
 
 DATABASE_NAME = 'workday.db'
 
-def connect_db():
-    """Establece conexión con la base de datos SQLite."""
-    conn = sqlite3.connect(DATABASE_NAME)
-    conn.row_factory = sqlite3.Row # Permite acceder a las columnas por nombre
-    return conn
-
 def init_db():
-    """Inicializa la base de datos, creando las tablas si no existen."""
-    conn = connect_db()
+    """Inicializa la base de datos y crea las tablas si no existen."""
+    conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
-    # --- Actualización de la Tabla de Usuarios ---
-    # Añadir columna 'role' si no existe
-    cursor.execute("PRAGMA table_info(users)")
-    columns = [col[1] for col in cursor.fetchall()]
-    if 'role' not in columns:
-        cursor.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'")
-        conn.commit()
-        print("Columna 'role' añadida a la tabla 'users'.")
-
-    # Crear la tabla de Usuarios si no existe (con la columna 'role')
+    # Tabla de usuarios
     cursor.execute('''
                    CREATE TABLE IF NOT EXISTS users (
                                                         dni TEXT PRIMARY KEY,
                                                         password TEXT NOT NULL,
-                                                        role TEXT NOT NULL DEFAULT 'user' -- 'user' o 'admin'
+                                                        role TEXT DEFAULT 'user'
                    )
                    ''')
 
-    # Insertar un usuario de ejemplo si no existe (DNI: 12345678A, Contraseña: pass, Rol: user)
-    cursor.execute("SELECT * FROM users WHERE dni = '12345678A'")
-    if cursor.fetchone() is None:
-        cursor.execute("INSERT INTO users (dni, password, role) VALUES (?, ?, ?)", ('12345678A', 'pass', 'user'))
-        print("Usuario de ejemplo '12345678A' (user) con contraseña 'pass' creado.")
-
-    # Insertar un usuario administrador de ejemplo si no existe (DNI: admin, Contraseña: adminpass, Rol: admin)
-    cursor.execute("SELECT * FROM users WHERE dni = 'admin'")
-    if cursor.fetchone() is None:
-        cursor.execute("INSERT INTO users (dni, password, role) VALUES (?, ?, ?)", ('admin', 'adminpass', 'admin'))
-        print("Usuario de ejemplo 'admin' (admin) con contraseña 'adminpass' creado.")
-
-    # --- Actualización de la Tabla de Jornadas Laborales ---
-    # La tabla 'workdays' ahora debe tener 'user_dni' y una clave primaria compuesta
-    # Si la tabla ya existe sin user_dni, es más complejo migrar datos existentes
-    # Para simplificar, si la tabla existe con la clave primaria antigua, la eliminamos y recreamos.
-    # En un entorno de producción, se haría una migración de datos más cuidadosa.
-    cursor.execute("PRAGMA table_info(workdays)")
-    workdays_columns = [col[1] for col in cursor.fetchall()]
-    if 'user_dni' not in workdays_columns:
-        # Si 'user_dni' no existe, asumimos que la tabla es la versión antigua y la recreamos.
-        # ADVERTENCIA: Esto borrará los datos de jornadas existentes si no fueron creados con user_dni.
-        cursor.execute("DROP TABLE IF EXISTS workdays")
-        conn.commit()
-        print("Tabla 'workdays' recreada para incluir 'user_dni'.")
-
+    # Tabla de jornadas laborales
     cursor.execute('''
                    CREATE TABLE IF NOT EXISTS workdays (
                                                            user_dni TEXT NOT NULL,
-                                                           date TEXT NOT NULL, -- Formato YYYY-MM-DD
-                                                           start_time INTEGER,       -- Timestamp de inicio (ms)
-                                                           end_time INTEGER,         -- Timestamp de fin (ms)
-                                                           total_break_duration INTEGER, -- Duración total de pausas (ms)
-                                                           events TEXT,              -- JSON string de los eventos del log
-                                                           PRIMARY KEY (user_dni, date), -- Clave primaria compuesta
+                                                           date TEXT NOT NULL,
+                                                           start_time INTEGER,
+                                                           end_time INTEGER,
+                                                           total_break_duration INTEGER DEFAULT 0,
+                                                           events TEXT,
+                                                           PRIMARY KEY (user_dni, date),
                        FOREIGN KEY (user_dni) REFERENCES users(dni) ON DELETE CASCADE
                        )
                    ''')
 
+    # Añadir usuarios de ejemplo si no existen
+    add_user('12345678A', 'pass', 'user')
+    add_user('admin', 'adminpass', 'admin')
+
     conn.commit()
     conn.close()
 
-def get_user(dni, password):
-    """Verifica las credenciales del usuario y devuelve su rol."""
-    conn = connect_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT dni, role FROM users WHERE dni = ? AND password = ?", (dni, password))
-    user = cursor.fetchone()
-    conn.close()
-    return dict(user) if user else None
+def hash_password(password):
+    """Hashea una contraseña usando SHA256."""
+    return hashlib.sha256(password.encode()).hexdigest()
 
 def add_user(dni, password, role='user'):
     """Añade un nuevo usuario a la base de datos."""
-    conn = connect_db()
+    conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
+    hashed_password = hash_password(password)
     try:
-        cursor.execute("INSERT INTO users (dni, password, role) VALUES (?, ?, ?)", (dni, password, role))
+        cursor.execute("INSERT INTO users (dni, password, role) VALUES (?, ?, ?)", (dni, hashed_password, role))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
-        # DNI ya existe
+        # El DNI ya existe
         return False
     finally:
         conn.close()
 
+def get_user(dni, password):
+    """Obtiene un usuario por DNI y contraseña."""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    hashed_password = hash_password(password)
+    cursor.execute("SELECT dni, role FROM users WHERE dni = ? AND password = ?", (dni, hashed_password))
+    user = cursor.fetchone()
+    conn.close()
+    if user:
+        return {'dni': user[0], 'role': user[1]}
+    return None
+
 def get_all_users():
-    """Obtiene todos los usuarios (DNI y rol)."""
-    conn = connect_db()
+    """Obtiene todos los usuarios (sin contraseñas)."""
+    conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute("SELECT dni, role FROM users")
-    users = [dict(row) for row in cursor.fetchall()]
+    users = [{'dni': row[0], 'role': row[1]} for row in cursor.fetchall()]
     conn.close()
     return users
 
-def save_workday(user_dni, workday_data):
-    """Guarda o actualiza los datos de una jornada laboral para un usuario específico."""
-    conn = connect_db()
+def update_user(dni, new_password=None, new_role=None):
+    """Actualiza la contraseña o el rol de un usuario."""
+    conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
+    updates = []
+    params = []
 
-    # Intenta actualizar si la jornada ya existe para esa fecha y usuario
+    if new_password:
+        updates.append("password = ?")
+        params.append(hash_password(new_password))
+    if new_role:
+        updates.append("role = ?")
+        params.append(new_role)
+
+    if not updates:
+        conn.close()
+        return False # No hay nada que actualizar
+
+    query = f"UPDATE users SET {', '.join(updates)} WHERE dni = ?"
+    params.append(dni)
+
+    try:
+        cursor.execute(query, tuple(params))
+        conn.commit()
+        return cursor.rowcount > 0 # Retorna True si se actualizó al menos una fila
+    finally:
+        conn.close()
+
+def delete_user(dni):
+    """Elimina un usuario de la base de datos."""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys = ON;") # Asegura que las claves foráneas estén activas
+        cursor.execute("DELETE FROM users WHERE dni = ?", (dni,))
+        conn.commit()
+        return cursor.rowcount > 0 # Retorna True si se eliminó al menos una fila
+    finally:
+        conn.close()
+
+def save_workday(user_dni, workday_data):
+    """Guarda o actualiza los datos de la jornada laboral."""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    # Asegúrate de que los datos estén en el formato correcto para la base de datos
+    # Las claves del diccionario deben coincidir con las columnas de la tabla
+    date = workday_data.get('date')
+    start_time = workday_data.get('start_time')
+    end_time = workday_data.get('end_time')
+    total_break_duration = workday_data.get('total_break_duration', 0)
+    events = workday_data.get('events')
+
+    # Convertir la lista de eventos a JSON string para almacenarla
+    import json
+    events_json = json.dumps(events)
+
     cursor.execute('''
-                   UPDATE workdays
-                   SET start_time = ?, end_time = ?, total_break_duration = ?, events = ?
-                   WHERE user_dni = ? AND date = ?
-                   ''', (
-                       workday_data['start_time'],
-                       workday_data['end_time'],
-                       workday_data['total_break_duration'],
-                       json.dumps(workday_data['events']), # Guardar como string JSON
-                       user_dni,
-                       workday_data['date']
-                   ))
-
-    # Si no se actualizó ninguna fila, significa que no existía, entonces inserta
-    if cursor.rowcount == 0:
-        cursor.execute('''
-                       INSERT INTO workdays (user_dni, date, start_time, end_time, total_break_duration, events)
-                       VALUES (?, ?, ?, ?, ?, ?)
-                       ''', (
-                           user_dni,
-                           workday_data['date'],
-                           workday_data['start_time'],
-                           workday_data['end_time'],
-                           workday_data['total_break_duration'],
-                           json.dumps(workday_data['events']) # Guardar como string JSON
-                       ))
-
+        INSERT OR REPLACE INTO workdays (user_dni, date, start_time, end_time, total_break_duration, events)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (user_dni, date, start_time, end_time, total_break_duration, events_json))
     conn.commit()
     conn.close()
 
 def get_workday(user_dni, date):
-    """Obtiene los datos de una jornada por fecha para un usuario específico."""
-    conn = connect_db()
+    """Obtiene los datos de la jornada laboral para un usuario y fecha específicos."""
+    conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM workdays WHERE user_dni = ? AND date = ?", (user_dni, date))
-    workday = cursor.fetchone()
+    cursor.execute("SELECT user_dni, date, start_time, end_time, total_break_duration, events FROM workdays WHERE user_dni = ? AND date = ?", (user_dni, date))
+    row = cursor.fetchone()
     conn.close()
-    if workday:
-        workday_dict = dict(workday)
-        workday_dict['events'] = json.loads(workday_dict['events']) if workday_dict['events'] else []
-        return workday_dict
+    if row:
+        # Convertir la cadena JSON de eventos de vuelta a una lista
+        import json
+        events = json.loads(row[5]) if row[5] else []
+        return {
+            'user_dni': row[0],
+            'date': row[1],
+            'start_time': row[2],
+            'end_time': row[3],
+            'total_break_duration': row[4],
+            'events': events
+        }
     return None
 
 def get_all_workdays_for_user(user_dni):
-    """Obtiene todas las jornadas registradas para un usuario específico."""
-    conn = connect_db()
+    """Obtiene todas las jornadas laborales para un usuario específico."""
+    conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM workdays WHERE user_dni = ? ORDER BY date DESC", (user_dni,))
-    workdays = []
-    for row in cursor.fetchall():
-        workday_dict = dict(row)
-        workday_dict['events'] = json.loads(workday_dict['events']) if workday_dict['events'] else []
-        workdays.append(workday_dict)
+    cursor.execute("SELECT user_dni, date, start_time, end_time, total_break_duration, events FROM workdays WHERE user_dni = ?", (user_dni,))
+    rows = cursor.fetchall()
     conn.close()
+    workdays = []
+    import json
+    for row in rows:
+        events = json.loads(row[5]) if row[5] else []
+        workdays.append({
+            'user_dni': row[0],
+            'date': row[1],
+            'start_time': row[2],
+            'end_time': row[3],
+            'total_break_duration': row[4],
+            'events': events
+        })
     return workdays
 
 def get_all_workdays_all_users():
-    """Obtiene todas las jornadas registradas para todos los usuarios."""
-    conn = connect_db()
+    """Obtiene todas las jornadas laborales de todos los usuarios."""
+    conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM workdays ORDER BY user_dni, date DESC")
-    workdays = []
-    for row in cursor.fetchall():
-        workday_dict = dict(row)
-        workday_dict['events'] = json.loads(workday_dict['events']) if workday_dict['events'] else []
-        workdays.append(workday_dict)
+    cursor.execute("SELECT user_dni, date, start_time, end_time, total_break_duration, events FROM workdays ORDER BY user_dni, date DESC")
+    rows = cursor.fetchall()
     conn.close()
+    workdays = []
+    import json
+    for row in rows:
+        events = json.loads(row[5]) if row[5] else []
+        workdays.append({
+            'user_dni': row[0],
+            'date': row[1],
+            'start_time': row[2],
+            'end_time': row[3],
+            'total_break_duration': row[4],
+            'events': events
+        })
     return workdays
 
 def delete_workday(user_dni, date):
-    """Elimina una jornada por fecha para un usuario específico."""
-    conn = connect_db()
+    """Elimina una jornada laboral para un usuario y fecha específicos."""
+    conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM workdays WHERE user_dni = ? AND date = ?", (user_dni, date))
     conn.commit()
     conn.close()
 
-if __name__ == '__main__':
-    # Este bloque se ejecuta solo si llamas a database.py directamente
-    init_db()
-    print("Base de datos inicializada y usuarios de ejemplo creados si no existían.")
