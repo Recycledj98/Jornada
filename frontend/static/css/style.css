@@ -1,0 +1,169 @@
+/* Estilos adicionales que complementan Tailwind CSS */
+
+/* Asegura que el contenedor del login y la app se centren bien */
+.login-section, #appContainer {
+    max-width: 500px; /* Ancho máximo para el formulario de login y la sección principal */
+    margin: 0 auto;
+}
+
+/* Estilos base para los botones */
+.button {
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s, border-color 0.2s; /* Transición suave al hover/active */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    margin: 0.5rem; /* Espacio entre botones */
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent; /* Borde por defecto transparente */
+}
+/* Efecto de elevación al pasar el ratón */
+.button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 10px -2px rgba(0, 0, 0, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.08);
+}
+/* Efecto de presión al hacer clic */
+.button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+}
+/* Estilos para botones deshabilitados */
+.button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    box-shadow: none;
+    background-color: #d1d5db; /* bg-gray-300 */
+    color: #6b7280; /* text-gray-500 */
+    border-color: #9ca3af; /* border-gray-400 */
+}
+
+/* Estilos para botón primario (azul índigo) */
+.button-primary {
+    background-color: #4f46e5; /* Índigo */
+    color: white;
+    border-color: #4f46e5;
+}
+.button-primary:hover:not(:disabled) {
+    background-color: #4338ca; /* Índigo más oscuro */
+    border-color: #4338ca;
+}
+/* Estilos para botón secundario (rojo) */
+.button-secondary {
+    background-color: #ef4444; /* Rojo */
+    color: white;
+    border-color: #ef4444;
+}
+.button-secondary:hover:not(:disabled) {
+    background-color: #dc2626; /* Rojo más oscuro */
+    border-color: #dc2626;
+}
+/* Estilos para botón terciario (verde) */
+.button-tertiary {
+    background-color: #22c55e; /* Verde */
+    color: white;
+    border-color: #22c55e;
+}
+.button-tertiary:hover:not(:disabled) {
+    background-color: #16a34a; /* Verde más oscuro */
+    border-color: #16a34a;
+}
+
+
+/* Estilos para las pestañas */
+.tab-buttons .tab-button {
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+    color: #6b7280; /* text-gray-500 */
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.tab-buttons .tab-button:hover {
+    color: #4f46e5; /* text-indigo-700 */
+}
+
+.tab-buttons .tab-button.active {
+    color: #4f46e5; /* text-indigo-700 */
+    border-color: #4f46e5; /* border-indigo-700 */
+}
+
+/* Estilos para el modal de mensaje */
+.message-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6); /* Fondo semi-transparente oscuro */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+}
+
+.message-modal.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.message-modal-content {
+    background-color: white;
+    padding: 2.5rem;
+    border-radius: 1rem; /* Esquinas más redondeadas */
+    box-shadow: 0 15px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    max-width: 450px;
+    width: 90%;
+    transform: translateY(-20px); /* Efecto de entrada */
+    transition: transform 0.3s ease-in-out;
+}
+
+.message-modal.show .message-modal-content {
+    transform: translateY(0);
+}
+
+.message-modal-content p {
+    font-size: 1.15rem;
+    color: #374151; /* text-gray-700 */
+    line-height: 1.6;
+}
+
+/* Estilos para la tabla de registros */
+.records-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1.5rem;
+    font-size: 0.9rem;
+    border-radius: 0.5rem; /* Bordes redondeados para la tabla */
+    overflow: hidden; /* Asegura que los bordes redondeados se apliquen bien */
+}
+
+.records-table th, .records-table td {
+    border: 1px solid #e5e7eb; /* border-gray-200 */
+    padding: 0.75rem;
+    text-align: left;
+}
+
+.records-table th {
+    background-color: #f3f4f6; /* bg-gray-100 */
+    font-weight: 700; /* font-bold */
+    color: #4b5563; /* text-gray-600 */
+    text-transform: uppercase;
+    font-size: 0.8rem;
+}
+
+.records-table tbody tr:nth-child(even) {
+    background-color: #f9fafb; /* bg-gray-50 */
+}
+
+.records-table tbody tr:hover {
+    background-color: #e0e7ff; /* bg-indigo-50 */
+    transition: background-color 0.2s ease-in-out;
+}

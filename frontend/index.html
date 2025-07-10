@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro de Jornada Laboral</title>
+    <!-- Incluir Tailwind CSS desde CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fuente Inter de Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- CSS personalizado -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="font-inter bg-gray-100 flex justify-center items-start min-h-screen p-5 box-border">
+<div class="container bg-white rounded-2xl shadow-lg p-10 w-full max-w-3xl text-center">
+    <h1 class="text-4xl font-bold text-gray-900 mb-8">Registro de Jornada</h1>
+
+    <!-- Contenedor de login -->
+    <div id="loginContainer" class="login-section">
+        <h2 class="text-2xl font-semibold text-gray-800 mb-6">Iniciar Sesión</h2>
+        <div class="mb-4">
+            <label for="dni" class="block text-gray-700 text-sm font-bold mb-2 text-left">DNI:</label>
+            <input type="text" id="dni" class="shadow appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Introduce tu DNI" value="12345678A">
+        </div>
+        <div class="mb-6">
+            <label for="password" class="block text-gray-700 text-sm font-bold mb-2 text-left">Contraseña:</label>
+            <input type="password" id="password" class="shadow appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 mb-3 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Introduce tu contraseña" value="pass">
+        </div>
+        <button id="loginButton" class="button button-primary w-full py-3">Entrar</button>
+        <p id="loginError" class="text-red-600 text-sm mt-4 hidden"></p>
+    </div>
+
+    <!-- Contenedor principal de la aplicación (oculto hasta el login) -->
+    <div id="appContainer" class="hidden">
+        <div class="flex justify-between items-center mb-6">
+            <div id="welcomeMessageDisplay" class="text-lg font-semibold text-gray-700"></div>
+            <button id="logoutButton" class="button button-secondary px-4 py-2 text-sm">Cerrar Sesión</button>
+        </div>
+
+        <!-- Pestañas de navegación -->
+        <div class="tab-buttons flex justify-center mb-6 border-b-2 border-gray-200">
+            <button class="tab-button active" data-tab="tracker">Mi Jornada</button>
+            <button class="tab-button" data-tab="records">Registros</button>
+            <button class="tab-button hidden" data-tab="admin" id="adminTabButton">Panel de Administración</button>
+        </div>
+
+        <!-- Contenido de la pestaña "Mi Jornada" -->
+        <div id="trackerTab" class="tab-content active">
+            <div id="statusMessage" class="status-message status-idle">
+                Listo para empezar el día.
+            </div>
+
+            <div id="currentTime" class="time-display">00:00:00</div>
+
+            <div class="flex flex-wrap justify-center gap-2 mb-6">
+                <button id="startButton" class="button button-primary">Iniciar Jornada</button>
+                <button id="startBreakButton" class="button button-secondary" disabled>Iniciar Pausa</button>
+                <button id="endBreakButton" class="button button-tertiary" disabled>Finalizar Pausa</button>
+                <button id="endButton" class="button button-primary" disabled>Finalizar Jornada</button>
+                <button id="resetButton" class="button button-secondary">Reiniciar</button>
+            </div>
+
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Resumen del Día</h2>
+            <div class="space-y-3 mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div class="summary-item">
+                    <span class="summary-label">Inicio de Jornada:</span>
+                    <span id="displayStartTime" class="summary-value">--:--:--</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Fin de Jornada:</span>
+                    <span id="displayEndTime" class="summary-value">--:--:--</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Tiempo Total de Trabajo:</span>
+                    <span id="displayTotalWorkTime" class="summary-value">00:00:00</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Tiempo Total de Pausa:</span>
+                    <span id="displayTotalBreakTime" class="summary-value">00:00:00</span>
+                </div>
+            </div>
+
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Registro de Actividad</h2>
+            <div id="logEntries" class="space-y-2 text-left max-h-60 overflow-y-auto p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <!-- Las entradas del log se añadirán aquí por JavaScript -->
+                <div class="log-entry">
+                    <span>Aplicación cargada</span>
+                    <span id="initialLoadTime"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contenido de la pestaña "Registros" -->
+        <div id="recordsTab" class="tab-content hidden">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Historial de Jornadas</h2>
+            <div class="flex flex-wrap justify-center gap-4 mb-6">
+                <button id="viewDaily" class="button button-primary">Ver Diario</button>
+                <button id="viewWeekly" class="button button-primary">Ver Semanal</button>
+                <button id="viewMonthly" class="button button-primary">Ver Mensual</button>
+                <button id="exportData" class="button button-tertiary">Exportar Datos (CSV)</button>
+            </div>
+
+            <div class="mb-4">
+                <label for="recordDate" class="block text-gray-700 text-sm font-bold mb-2">Seleccionar Fecha (Diario):</label>
+                <input type="date" id="recordDate" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500 max-w-xs">
+            </div>
+
+            <div id="recordsDisplay" class="text-left max-h-96 overflow-y-auto p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <!-- Los registros se mostrarán aquí por JavaScript -->
+                <p class="text-gray-600">Selecciona una opción para ver los registros.</p>
+            </div>
+        </div>
+
+        <!-- Contenido de la pestaña "Panel de Administración" -->
+        <div id="adminTab" class="tab-content hidden">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-6">Panel de Administración</h2>
+
+            <!-- Sección para Registrar Nuevo Usuario -->
+            <div class="mb-8 p-6 bg-gray-50 rounded-lg border border-gray-200 text-left">
+                <h3 class="text-xl font-semibold text-gray-800 mb-4">Registrar Nuevo Usuario</h3>
+                <div class="mb-4">
+                    <label for="newDni" class="block text-gray-700 text-sm font-bold mb-2">DNI:</label>
+                    <input type="text" id="newDni" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="DNI del nuevo usuario">
+                </div>
+                <div class="mb-4">
+                    <label for="newPassword" class="block text-gray-700 text-sm font-bold mb-2">Contraseña:</label>
+                    <input type="password" id="newPassword" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Contraseña">
+                </div>
+                <div class="mb-6">
+                    <label for="newRole" class="block text-gray-700 text-sm font-bold mb-2">Rol:</label>
+                    <select id="newRole" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="user">Usuario</option>
+                        <option value="admin">Administrador</option>
+                    </select>
+                </div>
+                <button id="registerUserButton" class="button button-primary w-full py-3">Registrar Usuario</button>
+                <p id="registerUserMessage" class="text-sm mt-4 hidden"></p>
+            </div>
+
+            <!-- Sección para Ver Jornadas de Todos los Usuarios -->
+            <div class="p-6 bg-gray-50 rounded-lg border border-gray-200 text-left">
+                <h3 class="text-xl font-semibold text-gray-800 mb-4">Ver Jornadas de Todos los Usuarios</h3>
+                <div class="mb-4">
+                    <label for="filterUserDni" class="block text-gray-700 text-sm font-bold mb-2">Filtrar por DNI de Usuario (opcional):</label>
+                    <input type="text" id="filterUserDni" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500 max-w-xs" placeholder="DNI del usuario">
+                </div>
+                <button id="viewAllWorkdaysButton" class="button button-primary mb-4">Cargar Todas las Jornadas</button>
+                <div id="allWorkdaysDisplay" class="max-h-96 overflow-y-auto">
+                    <p class="text-gray-600">Haz clic en "Cargar Todas las Jornadas" para ver los registros.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Mensajes Personalizado -->
+<div id="messageModal" class="message-modal">
+    <div class="message-modal-content">
+        <p id="messageText" class="mb-6"></p>
+        <button id="messageCloseButton" class="button button-primary">Aceptar</button>
+    </div>
+</div>
+
+<!-- JavaScript de la aplicación -->
+<script src="/static/js/app.js"></script>
+</body>
+</html>
