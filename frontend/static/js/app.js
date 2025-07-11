@@ -1,6 +1,6 @@
 // Constantes para los elementos del DOM
 const loginContainer = document.getElementById('loginContainer');
-const appContainer = document.getElementById('appContainer'); // Corregido: Eliminado 'document = ' repetido
+const appContainer = document.getElementById('appContainer');
 const dniInput = document.getElementById('dni');
 const passwordInput = document.getElementById('password');
 const loginButton = document.getElementById('loginButton');
@@ -46,6 +46,17 @@ const registerUserMessage = document.getElementById('registerUserMessage');
 const filterUserDniInput = document.getElementById('filterUserDni');
 const viewAllWorkdaysButton = document.getElementById('viewAllWorkdaysButton');
 const allWorkdaysDisplay = document.getElementById('allWorkdaysDisplay');
+
+// Nuevos elementos para la gestión de usuarios
+const loadUsersButton = document.getElementById('loadUsersButton');
+const usersListDisplay = document.getElementById('usersListDisplay');
+const editUserDniInput = document.getElementById('editUserDni');
+const editUserPasswordInput = document.getElementById('editUserPassword');
+const editUserRoleSelect = document.getElementById('editUserRole');
+const updateUserButton = document.getElementById('updateUserButton');
+const deleteUserButton = document.getElementById('deleteUserButton');
+const userManagementMessage = document.getElementById('userManagementMessage');
+
 
 // Elementos para el mensaje de bienvenida y cerrar sesión
 const welcomeMessageDisplay = document.getElementById('welcomeMessageDisplay');
@@ -240,9 +251,11 @@ function playSound(soundFunction) {
 
 // --- Funciones de Comunicación con el Backend (API) ---
 
+const API_BASE = '/api'; // Definición de la constante API_BASE
+
 /**
  * Realiza una petición GET a la API con el encabezado X-User-DNI.
- * @param {string} url - URL del endpoint.
+ * @param {string} url - URL del endpoint (sin el prefijo /api).
  * @returns {Promise<Object>} Respuesta JSON de la API.
  */
 async function apiGet(url) {
@@ -251,7 +264,8 @@ async function apiGet(url) {
         if (loggedInUserDni) {
             headers['X-User-DNI'] = loggedInUserDni;
         }
-        const response = await fetch(url, { headers: headers });
+        const fullUrl = API_BASE + url; // <--- Aquí se añade el prefijo
+        const response = await fetch(fullUrl, { headers: headers });
         let responseData = {};
         try {
             responseData = await response.json(); // Intentar parsear siempre
@@ -274,7 +288,8 @@ async function apiGet(url) {
 
 /**
  * Realiza una petición POST a la API con el encabezado X-User-DNI.
- * @param {string} url - URL del endpoint.
+ * @param {string} url - URL del endpoint (sin el prefijo /api).
+ * @param {Object} data - Datos a enviar en el cuerpo de la petición.
  * @returns {Promise<Object>} Respuesta JSON de la API.
  */
 async function apiPost(url, data) {
@@ -285,7 +300,8 @@ async function apiPost(url, data) {
         if (loggedInUserDni) {
             headers['X-User-DNI'] = loggedInUserDni;
         }
-        const response = await fetch(url, {
+        const fullUrl = API_BASE + url; // <--- Aquí se añade el prefijo
+        const response = await fetch(fullUrl, {
             method: 'POST',
             headers: headers,
             body: JSON.stringify(data),
@@ -308,6 +324,81 @@ async function apiPost(url, data) {
         return null;
     }
 }
+
+/**
+ * Realiza una petición PUT a la API con el encabezado X-User-DNI.
+ * @param {string} url - URL del endpoint (sin el prefijo /api).
+ * @param {Object} data - Datos a enviar en el cuerpo de la petición.
+ * @returns {Promise<Object>} Respuesta JSON de la API.
+ */
+async function apiPut(url, data) {
+    try {
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        if (loggedInUserDni) {
+            headers['X-User-DNI'] = loggedInUserDni;
+        }
+        const fullUrl = API_BASE + url; // <--- Aquí se añade el prefijo
+        const response = await fetch(fullUrl, {
+            method: 'PUT',
+            headers: headers,
+            body: JSON.stringify(data),
+        });
+        let responseData = {};
+        try {
+            responseData = await response.json();
+        } catch (jsonError) {
+            console.warn("No se pudo parsear la respuesta JSON:", jsonError);
+            responseData = { success: false, message: response.statusText || `Error HTTP ${response.status}` };
+        }
+
+        if (!response.ok) {
+            throw new Error(responseData.message || `Error HTTP: ${response.status}`);
+        }
+        return responseData;
+    } catch (error) {
+        console.error("Error en petición PUT:", error);
+        showMessage(`Error al actualizar datos: ${error.message}`);
+        return null;
+    }
+}
+
+/**
+ * Realiza una petición DELETE a la API con el encabezado X-User-DNI.
+ * @param {string} url - URL del endpoint (sin el prefijo /api).
+ * @returns {Promise<Object>} Respuesta JSON de la API.
+ */
+async function apiDelete(url) {
+    try {
+        const headers = {};
+        if (loggedInUserDni) {
+            headers['X-User-DNI'] = loggedInUserDni;
+        }
+        const fullUrl = API_BASE + url; // <--- Aquí se añade el prefijo
+        const response = await fetch(fullUrl, {
+            method: 'DELETE',
+            headers: headers,
+        });
+        let responseData = {};
+        try {
+            responseData = await response.json();
+        } catch (jsonError) {
+            console.warn("No se pudo parsear la respuesta JSON:", jsonError);
+            responseData = { success: false, message: response.statusText || `Error HTTP ${response.status}` };
+        }
+
+        if (!response.ok) {
+            throw new Error(responseData.message || `Error HTTP: ${response.status}`);
+        }
+        return responseData;
+    } catch (error) {
+        console.error("Error en petición DELETE:", error);
+        showMessage(`Error al eliminar datos: ${error.message}`);
+        return null;
+    }
+}
+
 
 // --- Lógica de la Aplicación ---
 
@@ -729,6 +820,11 @@ tabButtons.forEach(button => {
             // Si se cambia a la pestaña de admin, limpiar y cargar los datos de todos los usuarios
             allWorkdaysDisplay.innerHTML = '<p class="text-gray-600">Haz clic en "Cargar Todas las Jornadas" para ver los registros.</p>';
             filterUserDniInput.value = ''; // Limpiar filtro de DNI
+            usersListDisplay.innerHTML = '<p class="text-gray-600">Haz clic en "Cargar Usuarios" para ver la lista.</p>'; // Limpiar lista de usuarios
+            userManagementMessage.classList.add('hidden'); // Ocultar mensajes de gestión de usuarios
+            editUserDniInput.value = ''; // Limpiar campos de edición
+            editUserPasswordInput.value = '';
+            editUserRoleSelect.value = '';
         }
     });
 });
@@ -1057,12 +1153,161 @@ registerUserButton.addEventListener('click', async () => {
         newDniInput.value = '';
         newPasswordInput.value = '';
         newRoleSelect.value = 'user'; // Resetear a user por defecto
+        loadUsers(); // Recargar la lista de usuarios después de registrar uno nuevo
     } else {
         registerUserMessage.textContent = response ? response.message : "Error al registrar usuario.";
         registerUserMessage.classList.remove('hidden', 'text-green-600');
         registerUserMessage.classList.add('text-red-600');
     }
 });
+
+/**
+ * Carga y muestra la lista de todos los usuarios en el panel de administración.
+ */
+async function loadUsers() {
+    usersListDisplay.innerHTML = '<p class="text-gray-600">Cargando usuarios...</p>';
+    const response = await apiGet('/admin/users');
+
+    if (response && response.success && response.users) {
+        if (response.users.length === 0) {
+            usersListDisplay.innerHTML = '<p class="text-gray-600">No hay usuarios registrados.</p>';
+            return;
+        }
+
+        let html = `<table class="records-table">
+                        <thead>
+                            <tr>
+                                <th>DNI</th>
+                                <th>Rol</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+        response.users.forEach(user => {
+            html += `<tr>
+                        <td>${user.dni}</td>
+                        <td>${user.role}</td>
+                        <td>
+                            <button class="button button-primary px-2 py-1 text-sm edit-user-btn" data-dni="${user.dni}" data-role="${user.role}">Editar</button>
+                            <button class="button button-secondary px-2 py-1 text-sm delete-user-btn" data-dni="${user.dni}">Eliminar</button>
+                        </td>
+                    </tr>`;
+        });
+        html += `</tbody></table>`;
+        usersListDisplay.innerHTML = html;
+
+        // Añadir event listeners a los botones de editar y eliminar
+        document.querySelectorAll('.edit-user-btn').forEach(button => {
+            button.addEventListener('click', (event) => {
+                const dni = event.target.dataset.dni;
+                const role = event.target.dataset.role;
+                editUserDniInput.value = dni;
+                editUserRoleSelect.value = role;
+                editUserPasswordInput.value = ''; // Limpiar campo de contraseña al cargar
+                userManagementMessage.classList.add('hidden'); // Ocultar mensajes anteriores
+            });
+        });
+
+        document.querySelectorAll('.delete-user-btn').forEach(button => {
+            button.addEventListener('click', async (event) => {
+                const dniToDelete = event.target.dataset.dni;
+                if (confirm(`¿Estás seguro de que quieres eliminar al usuario ${dniToDelete}? Esto también eliminará todas sus jornadas.`)) {
+                    const deleteResponse = await apiDelete(`/admin/user/${dniToDelete}`);
+                    if (deleteResponse && deleteResponse.success) {
+                        userManagementMessage.textContent = deleteResponse.message;
+                        userManagementMessage.classList.remove('hidden', 'text-red-600');
+                        userManagementMessage.classList.add('text-green-600');
+                        loadUsers(); // Recargar la lista después de eliminar
+                    } else {
+                        userManagementMessage.textContent = deleteResponse ? deleteResponse.message : "Error al eliminar usuario.";
+                        userManagementMessage.classList.remove('hidden', 'text-green-600');
+                        userManagementMessage.classList.add('text-red-600');
+                    }
+                }
+            });
+        });
+
+    } else {
+        usersListDisplay.innerHTML = '<p class="text-gray-600">Error al cargar usuarios o no hay datos.</p>';
+    }
+}
+
+// Event listener para el botón "Cargar Usuarios"
+loadUsersButton.addEventListener('click', loadUsers);
+
+// Event listener para el botón "Actualizar Usuario"
+updateUserButton.addEventListener('click', async () => {
+    const dniToUpdate = editUserDniInput.value.trim();
+    const newPassword = editUserPasswordInput.value.trim();
+    const newRole = editUserRoleSelect.value;
+
+    if (!dniToUpdate) {
+        userManagementMessage.textContent = "El DNI del usuario a actualizar es obligatorio.";
+        userManagementMessage.classList.remove('hidden', 'text-green-600');
+        userManagementMessage.classList.add('text-red-600');
+        return;
+    }
+
+    const updateData = {};
+    if (newPassword) {
+        updateData.password = newPassword;
+    }
+    if (newRole) {
+        updateData.role = newRole;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+        userManagementMessage.textContent = "No se proporcionaron datos para actualizar (contraseña o rol).";
+        userManagementMessage.classList.remove('hidden', 'text-green-600');
+        userManagementMessage.classList.add('text-red-600');
+        return;
+    }
+
+    const response = await apiPut(`/admin/user/${dniToUpdate}`, updateData);
+
+    if (response && response.success) {
+        userManagementMessage.textContent = response.message;
+        userManagementMessage.classList.remove('hidden', 'text-red-600');
+        userManagementMessage.classList.add('text-green-600');
+        editUserPasswordInput.value = ''; // Limpiar campo de contraseña
+        loadUsers(); // Recargar la lista después de actualizar
+    } else {
+        userManagementMessage.textContent = response ? response.message : "Error al actualizar usuario.";
+        userManagementMessage.classList.remove('hidden', 'text-green-600');
+        userManagementMessage.classList.add('text-red-600');
+    }
+});
+
+// Event listener para el botón "Eliminar Usuario"
+deleteUserButton.addEventListener('click', async () => {
+    const dniToDelete = editUserDniInput.value.trim();
+
+    if (!dniToDelete) {
+        userManagementMessage.textContent = "El DNI del usuario a eliminar es obligatorio.";
+        userManagementMessage.classList.remove('hidden', 'text-green-600');
+        userManagementMessage.classList.add('text-red-600');
+        return;
+    }
+
+    if (confirm(`¿Estás seguro de que quieres eliminar al usuario ${dniToDelete}? Esto también eliminará todas sus jornadas.`)) {
+        const response = await apiDelete(`/admin/user/${dniToDelete}`);
+        if (response && response.success) {
+            userManagementMessage.textContent = response.message;
+            userManagementMessage.classList.remove('hidden', 'text-red-600');
+            userManagementMessage.classList.add('text-green-600');
+            editUserDniInput.value = ''; // Limpiar campos después de eliminar
+            editUserPasswordInput.value = '';
+            editUserRoleSelect.value = '';
+            loadUsers(); // Recargar la lista después de eliminar
+        } else {
+            userManagementMessage.textContent = response ? response.message : "Error al eliminar usuario.";
+            userManagementMessage.classList.remove('hidden', 'text-green-600');
+            userManagementMessage.classList.add('text-red-600');
+        }
+    }
+});
+
 
 viewAllWorkdaysButton.addEventListener('click', async () => {
     allWorkdaysDisplay.innerHTML = '<p class="text-gray-600">Cargando todas las jornadas...</p>';

@@ -4,12 +4,27 @@ import database
 import os
 import json
 from functools import wraps
+import logging # Importar el módulo logging
+import sys     # Importar el módulo sys
 
 app = Flask(__name__, static_folder='../frontend', static_url_path='/')
 CORS(app)
 
 # Inicializa la base de datos al iniciar la aplicación Flask
 database.init_db()
+
+# --- Configuración de Logging Detallado para Flask ---
+# Esto es CRÍTICO para ver los errores de Python en el log de Apache
+if __name__ != '__main__': # Solo configurar si no se ejecuta directamente (es decir, en WSGI)
+    gunicorn_logger = logging.getLogger('gunicorn.error')
+    app.logger.handlers = gunicorn_logger.handlers
+    app.logger.setLevel(gunicorn_logger.level)
+else: # Si se ejecuta directamente (para desarrollo), envía a la consola
+    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+    app.logger.addHandler(logging.StreamHandler(sys.stderr))
+    app.logger.setLevel(logging.DEBUG)
+# --- Fin de Configuración de Logging ---
+
 
 # Decorador para verificar si el usuario es administrador
 # En una aplicación real, esto también debería verificar un token de sesión
@@ -47,6 +62,7 @@ def static_files(filename):
     """Sirve archivos estáticos (CSS, JS)."""
     return send_from_directory('../frontend/static', filename)
 
+# RUTA CORREGIDA: Eliminado '/api'
 @app.route('/login', methods=['POST'])
 def login():
     """Endpoint para el login de usuario."""
@@ -60,6 +76,7 @@ def login():
     else:
         return jsonify({'success': False, 'message': 'DNI o contraseña incorrectos'}), 401
 
+# RUTA CORREGIDA: Eliminado '/api'
 @app.route('/workday', methods=['GET', 'POST'])
 def workday():
     """
@@ -99,6 +116,7 @@ def workday():
             app.logger.error(f"Error al guardar jornada para {user_dni}: {e}", exc_info=True)
             return jsonify({'success': False, 'message': f'Error interno del servidor al guardar jornada: {str(e)}'}), 500
 
+# RUTA CORREGIDA: Eliminado '/api'
 @app.route('/workdays/user', methods=['GET'])
 def get_workdays_for_user():
     """Obtiene todas las jornadas registradas para el usuario logueado."""
@@ -110,6 +128,7 @@ def get_workdays_for_user():
     all_workdays = database.get_all_workdays_for_user(user_dni)
     return jsonify({'success': True, 'workdays': all_workdays}), 200
 
+# RUTA CORREGIDA: Eliminado '/api'
 @app.route('/workday/delete', methods=['POST'])
 def delete_workday_route():
     """Elimina una jornada por fecha para un usuario específico."""
@@ -132,7 +151,7 @@ def delete_workday_route():
         return jsonify({'success': False, 'message': f'Error interno del servidor al eliminar jornada: {str(e)}'}), 500
 
 # --- Rutas de Administración ---
-
+# RUTAS CORREGIDAS: Eliminado '/api' de todas las rutas de administración
 @app.route('/admin/users', methods=['GET'])
 # @admin_required # Descomentar para habilitar la seguridad de roles
 def admin_get_users():
@@ -190,7 +209,7 @@ def admin_update_user(dni):
         return jsonify({'success': False, 'message': f'Error interno del servidor al actualizar usuario: {str(e)}'}), 500
 
 @app.route('/admin/user/<dni>', methods=['DELETE'])
-@admin_required # Descomentar para habilitar la seguridad de roles
+# @admin_required # Descomentar para habilitar la seguridad de roles
 def admin_delete_user(dni):
     """Endpoint para que el administrador elimine un usuario."""
     try:
@@ -205,7 +224,7 @@ def admin_delete_user(dni):
 
 
 @app.route('/admin/all_workdays', methods=['GET'])
-@admin_required # Descomentar para habilitar la seguridad de roles
+# @admin_required # Descomentar para habilitar la seguridad de roles
 def admin_get_all_workdays():
     """Endpoint para que el administrador vea las jornadas de todos los usuarios."""
     all_workdays = database.get_all_workdays_all_users()

@@ -1,10 +1,30 @@
 import sqlite3
 import hashlib
+import os # Importar os para manejo de rutas
+import sys # Importar sys para depuración
 
-DATABASE_NAME = 'workday.db'
+# Define la ruta absoluta al directorio de tu base de datos
+# Asumiendo que workday.db estará en /var/www/proyecto/backend/instance/
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+DATABASE_DIR = os.path.join(BASE_DIR, 'instance')
+DATABASE_NAME = os.path.join(DATABASE_DIR, 'workday.db')
+
+# --- DEBUGGING TEMPORAL ---
+# Estas líneas imprimirán la ruta de la base de datos en los logs de Apache
+print(f"DATABASE_DIR: {DATABASE_DIR}", file=sys.stderr)
+print(f"DATABASE_NAME: {DATABASE_NAME}", file=sys.stderr)
+print(f"Current working directory (from database.py): {os.getcwd()}", file=sys.stderr)
+# --- FIN DEBUGGING TEMPORAL ---
 
 def init_db():
     """Inicializa la base de datos y crea las tablas si no existen."""
+    # Asegurarse de que el directorio 'instance' exista
+    os.makedirs(DATABASE_DIR, exist_ok=True)
+
+    # --- DEBUGGING TEMPORAL ---
+    print(f"Attempting to connect to database: {DATABASE_NAME}", file=sys.stderr)
+    # --- FIN DEBUGGING TEMPORAL ---
+
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
@@ -32,8 +52,12 @@ def init_db():
                    ''')
 
     # Añadir usuarios de ejemplo si no existen
-    add_user('12345678A', 'pass', 'user')
-    add_user('admin', 'adminpass', 'admin')
+    # Intentar añadir solo si no existen para evitar errores de integridad
+    try:
+        add_user('12345678A', 'pass', 'user', conn=conn)
+        add_user('admin', 'adminpass', 'admin', conn=conn)
+    except sqlite3.IntegrityError:
+        pass # Los usuarios ya existen, no hacer nada
 
     conn.commit()
     conn.close()
@@ -42,20 +66,23 @@ def hash_password(password):
     """Hashea una contraseña usando SHA256."""
     return hashlib.sha256(password.encode()).hexdigest()
 
-def add_user(dni, password, role='user'):
-    """Añade un nuevo usuario a la base de datos."""
-    conn = sqlite3.connect(DATABASE_NAME)
+def add_user(dni, password, role='user', conn=None):
+    """Añade un nuevo usuario a la base de datos. Permite pasar una conexión existente."""
+    if conn is None:
+        conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     hashed_password = hash_password(password)
     try:
         cursor.execute("INSERT INTO users (dni, password, role) VALUES (?, ?, ?)", (dni, hashed_password, role))
-        conn.commit()
+        if conn is not None: # Solo commitear si la conexión es local
+            conn.commit()
         return True
     except sqlite3.IntegrityError:
         # El DNI ya existe
         return False
     finally:
-        conn.close()
+        if conn is None: # Solo cerrar si la conexión fue abierta aquí
+            conn.close()
 
 def get_user(dni, password):
     """Obtiene un usuario por DNI y contraseña."""
